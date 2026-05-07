@@ -1,0 +1,93 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8"><title>Rendón Burgers</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <style>
+        body { background-color: #fcfcfc; }
+        .sticky-cart { position: sticky; top: 20px; border-radius: 15px; }
+        .precio-texto.text-muted { text-decoration: line-through; opacity: 0.5; }
+    </style>
+</head>
+<body>
+    <div class="container py-5">
+        <div style="background-color: red; padding: 15px; border-radius: 25px;" class="shadow mb-4">
+            <h1 class="text-center fw-bold text-white mb-0">🍔 Rendón Burgers</h1>
+        </div>
+
+        <div id="rastreador-container" class="card d-none mb-4 border-0 shadow-sm bg-dark text-white p-4" style="border-radius: 20px;">
+            <h5 class="text-center">📍 Estado de tu Pedido #<span id="track-id">0</span></h5>
+            <div class="progress bg-secondary mt-2" style="height: 25px; border-radius: 15px;">
+                <div id="progreso-barra" class="progress-bar progress-bar-striped progress-bar-animated bg-warning" style="width: 0%"></div>
+            </div>
+            <p id="track-mensaje" class="text-center mt-3 fw-bold mb-0">Preparando...</p>
+        </div>
+
+        <div class="text-center mb-5">
+            <div class="text-center mb-5 d-flex justify-content-center gap-2 flex-wrap">
+            <button class="btn btn-primary px-4 shadow-sm" onclick="showSection('desayunos')">🥞 Desayunos</button>
+            <button class="btn btn-primary px-4 shadow-sm" onclick="showSection('hamburguesas')">🍔 Hamburguesas</button>
+            <button class="btn btn-primary px-4 shadow-sm" onclick="showSection('bebidas')">🥤 Bebidas</button>
+</div>
+        </div>
+
+        <div class="row">
+            <div class="col-lg-8">
+                {% for categoria, items in menu_por_categoria.items() %}
+                <div id="{{ categoria }}-section" class="menu-section {% if categoria != 'hamburguesas' %}d-none{% endif %}">
+                    <h2 class="mb-4 fw-bold border-bottom pb-2 text-uppercase">{{ categoria }}</h2>
+                    <div class="row">
+                        {% for item in items %}
+                        <div class="col-md-6 mb-4">
+                            <div class="card h-100 border-0 shadow-sm">
+                                <div class="card-body">
+                                    <h5 class="fw-bold">{{ item.nombre }}</h5>
+                                    <p class="text-muted small">{{ item.descripcion }}</p>
+                                    <div class="d-flex justify-content-between align-items-center mt-3">
+                                        <span class="fs-4 fw-bold text-danger precio-texto" data-id="{{ item.id }}">${{ item.precio }}</span>
+                                        <button class="btn btn-dark btn-agregar" data-product-id="{{ item.id }}" onclick="agregarAlCarrito('{{ item.nombre }}', {{ item.precio }})">+ Agregar</button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        {% endfor %}
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+
+            <div class="col-lg-4">
+                <div class="card shadow sticky-cart border-0">
+                    <div class="card-header bg-white fw-bold">🛒 TU CARRITO</div>
+                    <div class="card-body">
+                        <ul id="lista-pedido" class="list-group list-group-flush mb-3"></ul>
+                        <div class="d-flex justify-content-between fs-3 fw-bold border-top pt-3">
+                            <span>Total:</span> <span id="total-cuenta" class="text-success">$0</span>
+                        </div>
+                        <button class="btn btn-success w-100 mt-4 py-3 fw-bold shadow" data-bs-toggle="modal" data-bs-target="#checkoutModal">CONFIRMAR PEDIDO</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal fade" id="checkoutModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header"><h5>Finalizar Pedido 🍔</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
+                <div class="modal-body">
+                    <input type="text" id="c-nombre" class="form-control mb-2" placeholder="Tu Nombre" required>
+                    <input type="tel" id="c-tel" class="form-control mb-2" placeholder="Tu Teléfono" required>
+                    <select id="c-tipo" class="form-select mb-2" onchange="document.getElementById('c-dir').classList.toggle('d-none', this.value === 'Sucursal')">
+                        <option value="Sucursal">Recoger en Sucursal</option><option value="Domicilio">A Domicilio</option>
+                    </select>
+                    <textarea id="c-dir" class="form-control d-none" placeholder="Dirección en Campeche"></textarea>
+                </div>
+                <div class="modal-footer"><button class="btn btn-success w-100" onclick="procesarCompraFinal()">ENVIAR A COCINA</button></div>
+            </div>
+        </div>
+    </div>
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="/static/main.js"></script>
+</body>
+</html>

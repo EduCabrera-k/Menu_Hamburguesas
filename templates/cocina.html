@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8"><title>Cocina - Rendón Burger</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <meta http-equiv="refresh" content="30">
+    <style>
+        body { background-color: #1a1a1a; color: white; }
+        .ticket { background: white; color: #333; border-top: 10px solid #d90429; border-radius: 4px; }
+        .qty { background: #333; color: white; padding: 2px 8px; border-radius: 50%; font-weight: bold; }
+    </style>
+</head>
+<body>
+    <div class="container-fluid py-4">
+        <h1 class="fw-bold mb-4 text-white">🔥 COCINA - RENDÓN BURGER</h1>
+        
+        <div class="row row-cols-1 row-cols-md-3 g-4">
+            {% for p in pedidos %}
+            <div class="col">
+                <div class="ticket p-3 shadow h-100 d-flex flex-column">
+                    <div class="d-flex justify-content-between align-items-center mb-2">
+                        <span class="fs-1 fw-bold">#{{ p.id }}</span>
+                        <span class="badge bg-danger">{% if p.entrega == 'Sucursal' %}Local{% else %}{{ p.entrega }}{% endif %}</span>
+                    </div>
+                    <div class="border-bottom pb-2 mb-2 small text-dark">
+                        <b>{{ p.cliente }}</b> | {{ p.telefono }} <br>
+                        {% if p.entrega == 'Domicilio' %}📍 {{ p.direccion }}{% endif %}
+                    </div>
+                    <div class="flex-grow-1 text-dark">
+                        {% for item in p['items'] %}
+                        <div class="py-1 border-bottom"><span class="qty">{{ item.cantidad }}</span> <b>{{ item.nombre }}</b></div>
+                        {% endfor %}
+                    </div>
+                    <button class="btn btn-success w-100 py-3 mt-3 fw-bold shadow" onclick="despachar({{ p.id }})">✅ DESPACHAR</button>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+
+        <div class="mt-5 p-4 bg-dark rounded border border-secondary shadow-lg">
+            <h3 class="text-warning mb-4 fw-bold">📦 CONTROL DE INVENTARIO</h3>
+            <div class="row row-cols-2 row-cols-md-4 row-cols-lg-6 g-2">
+                {% for item in menu %}
+                <div class="col">
+                    <button class="btn {% if item.disponible %}btn-outline-success text-white{% else %}btn-danger text-white{% endif %} w-100 py-3" 
+                            onclick="toggleStock({{ item.id }})">
+                        <span class="fw-bold d-block text-uppercase small">{{ item.nombre }}</span>
+                        <small>[{% if item.disponible %}HAY{% else %}NO HAY{% endif %}]</small>
+                    </button>
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+    </div>
+
+    <script>
+        function toggleStock(id) { 
+            fetch('/toggle_disponibilidad', {
+                method:'POST', 
+                headers:{'Content-Type':'application/json'}, 
+                body:JSON.stringify({id:id})
+            }).then(() => location.reload()); 
+        }
+        function despachar(id) { 
+            fetch('/marcar_listo', {
+                method:'POST', 
+                headers:{'Content-Type':'application/json'}, 
+                body:JSON.stringify({id:id})
+            }).then(() => location.reload()); 
+        }
+    </script>
+</body>
+</html>
