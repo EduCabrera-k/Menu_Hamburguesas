@@ -5,7 +5,6 @@ from pymongo import MongoClient
 app = Flask(__name__)
 
 # --- CONFIGURACIÓN DE MONGODB ATLAS ---
-
 MONGO_URI = "mongodb+srv://al070801_db_user:m5Rb0Msee6KB74X6@cluster0.yozw2vu.mongodb.net/?appName=Cluster0"
 client = MongoClient(MONGO_URI)
 db = client['rendon_burger_db']
@@ -14,7 +13,7 @@ pedidos_col = db['pedidos_activos']
 historial_col = db['historial_ventas']
 inventario_col = db['inventario_stock']
 
-
+# Menú completo con 26 items
 menu_items = [
     {"id": 1, "nombre": "Tradicional", "precio": 75, "descripcion": "Carne de la casa, jamón, queso, tocino y vegetales.", "categoria": "hamburguesas"},
     {"id": 2, "nombre": "Tradicional Doble", "precio": 120, "descripcion": "Doble carne, doble jamón, queso y tocino.", "categoria": "hamburguesas"},
@@ -50,18 +49,16 @@ def index():
     menu_por_categoria = {}
     for item in menu_items:
         item['disponible'] = inventario.get(str(item['id']), True)
-        cat = item.get('categoria', 'otros')
+        cat = item['categoria']
         if cat not in menu_por_categoria: menu_por_categoria[cat] = []
         menu_por_categoria[cat].append(item)
     return render_template('index.html', menu_por_categoria=menu_por_categoria)
 
 @app.route('/cocina')
 def vista_cocina():
-    # IMPORTANTE: Aquí actualizamos el estado de disponibilidad desde MongoDB
     inventario = {item['item_id']: item['disponible'] for item in inventario_col.find()}
     for item in menu_items:
         item['disponible'] = inventario.get(str(item['id']), True)
-    
     pedidos = list(pedidos_col.find().sort("hora", 1))
     for p in pedidos: p.pop('_id', None)
     return render_template('cocina.html', pedidos=pedidos, menu=menu_items)
@@ -77,13 +74,13 @@ def ordenar():
     fecha_hoy = datetime.now().strftime("%Y-%m-%d")
     total_hoy = pedidos_col.count_documents({"fecha": fecha_hoy}) + historial_col.count_documents({"fecha": fecha_hoy})
     nuevo_id = total_hoy + 1
-    
     nuevo_pedido = {
         "id": nuevo_id,
         "cliente": data['cliente']['nombre'],
         "telefono": data['cliente']['telefono'],
         "entrega": data['cliente']['tipo'],
         "direccion": data['cliente'].get('direccion', 'N/A'),
+        "metodo_pago": data['cliente'].get('metodo_pago', 'Efectivo'),
         "items": data['carrito'],
         "hora": datetime.now().strftime("%H:%M:%S"),
         "fecha": fecha_hoy,
@@ -96,19 +93,24 @@ def ordenar():
 def consultar_estado(pedido_id):
     pedido = pedidos_col.find_one({"id": pedido_id})
     if pedido:
-        return jsonify({"status": "preparando", "detalle": "Tu pedido está en el asador 🔥"})
-    
+        return jsonify({"status": "preparando", "detalle": "Preparando..."})
     pedido_f = historial_col.find_one({"id": pedido_id})
     if pedido_f:
         msg = "¡Tu orden está en camino! 🛵" if pedido_f.get('entrega') == 'Domicilio' else "¡Tu orden está lista para recoger! 🍔"
         return jsonify({"status": "listo", "detalle": msg})
     return jsonify({"status": "no_encontrado", "detalle": "Buscando..."})
 
+@app.route('/reporte')
+def ver_reporte():
+    fecha_hoy = datetime.now().strftime("%Y-%m-%d")
+    ventas = list(historial_col.find({"fecha": fecha_hoy}))
+    total_dinero = sum(v['total'] for v in ventas)
+    return render_template('reporte.html', ventas=ventas, total=total_dinero)
+
 @app.route('/toggle_disponibilidad', methods=['POST'])
 def toggle_disponibilidad():
     item_id = str(request.json.get('id'))
     doc = inventario_col.find_one({"item_id": item_id})
-    # Si no existe el documento, por defecto estaba disponible (True), así que ahora es False
     nuevo_estado = not doc['disponible'] if doc else False
     inventario_col.update_one({"item_id": item_id}, {"$set": {"disponible": nuevo_estado}}, upsert=True)
     return jsonify({"status": "success"})
@@ -123,13 +125,6 @@ def marcar_listo():
         pedidos_col.delete_one({"id": pedido_id})
         return jsonify({"status": "success"})
     return jsonify({"status": "error"}), 404
-
-@app.route('/reporte')
-def ver_reporte():
-    fecha_hoy = datetime.now().strftime("%Y-%m-%d")
-    ventas = list(historial_col.find({"fecha": fecha_hoy}))
-    total_dinero = sum(v['total'] for v in ventas)
-    return render_template('reporte.html', ventas=ventas, total=total_dinero)
 
 if __name__ == '__main__':
     app.run(debug=True, port=5000)

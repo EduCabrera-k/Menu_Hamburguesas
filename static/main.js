@@ -1,74 +1,129 @@
-let carrito = JSON.parse(localStorage.getItem('carrito_rendon')) || [];
-let intervaloRastreo;
+let carrito = [];
+let total = 0;
 
-function agregarAlCarrito(n, p) {
-    const i = carrito.find(x => x.nombre === n);
-    if (i) i.cantidad++; else carrito.push({ nombre: n, precio: p, cantidad: 1 });
-    actualizarVista();
+function showSection(id) {
+    document.querySelectorAll('.menu-section').forEach(s => s.classList.add('d-none'));
+    const section = document.getElementById(id + '-section');
+    if (section) section.classList.remove('d-none');
 }
-function eliminarDelCarrito(idx) { carrito[idx].cantidad--; if (carrito[idx].cantidad <= 0) carrito.splice(idx, 1); actualizarVista(); }
-function incrementarCantidad(idx) { carrito[idx].cantidad++; actualizarVista(); }
-function eliminarTodoProducto(idx) { carrito.splice(idx, 1); actualizarVista(); }
 
-function actualizarVista() {
-    localStorage.setItem('carrito_rendon', JSON.stringify(carrito));
-    const lista = document.getElementById('lista-pedido');
-    const totalTxt = document.getElementById('total-cuenta');
-    lista.innerHTML = ''; let total = 0;
-    if (carrito.length === 0) {
-        lista.innerHTML = '<li class="text-muted text-center py-3 small">El carrito está vacío</li>';
+// Función para agregar: Ahora busca si el item ya existe
+function agregarAlCarrito(nombre, precio, id) {
+    const index = carrito.findIndex(i => i.item_id === id);
+    if (index > -1) {
+        carrito[index].cantidad++;
     } else {
-        carrito.forEach((item, idx) => {
-            const li = document.createElement('li');
-            li.className = 'list-group-item d-flex justify-content-between align-items-center px-0 bg-transparent border-0';
-            li.innerHTML = `<div><span class="d-block fw-bold">${item.nombre}</span><small class="text-muted">$${item.precio} c/u</small></div>
-                <div class="d-flex align-items-center gap-1">
-                    <button class="btn btn-sm btn-outline-secondary py-0 px-2" onclick="eliminarDelCarrito(${idx})">-</button>
-                    <span class="fw-bold text-danger mx-1">x${item.cantidad}</span>
-                    <button class="btn btn-sm btn-outline-success py-0 px-2" onclick="incrementarCantidad(${idx})">+</button>
-                    <button class="btn btn-sm btn-danger ms-2 py-0 px-2" onclick="eliminarTodoProducto(${idx})">&times;</button>
-                </div>`;
-            lista.appendChild(li); total += item.precio * item.cantidad;
-        });
+        carrito.push({ nombre, precio, cantidad: 1, item_id: id });
     }
-    totalTxt.innerText = `$${total}`;
+    actualizarCarritoUI();
+    const Toast = Swal.mixin({ toast: true, position: 'top-end', showConfirmButton: false, timer: 1000 });
+    Toast.fire({ icon: 'success', title: 'Agregado' });
 }
 
-async function verificarStock() {
-    try {
-        const res = await fetch('/api/stock'); const stock = await res.json();
-        document.querySelectorAll('[data-product-id]').forEach(btn => {
-            const id = btn.getAttribute('data-product-id'); const disp = stock[id] !== false;
-            btn.classList.replace(disp ? 'btn-secondary' : 'btn-dark', disp ? 'btn-dark' : 'btn-secondary');
-            btn.innerText = disp ? '+ Agregar' : 'Agotado'; btn.disabled = !disp;
-        });
-    } catch(e) {}
-}
-setInterval(verificarStock, 5000);
-
-async function procesarCompraFinal() {
-    if (carrito.length === 0) return alert("Carrito vacío");
-    const c = { nombre: document.getElementById('c-nombre').value, telefono: document.getElementById('c-tel').value, 
-               tipo: document.getElementById('c-tipo').value, direccion: document.getElementById('c-dir').value || 'N/A' };
-    if (!c.nombre || !c.telefono) return alert("Llena tus datos");
-    const res = await fetch('/ordenar', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ carrito, cliente: c }) });
-    if (res.ok) {
-        const data = await res.json(); bootstrap.Modal.getInstance(document.getElementById('checkoutModal')).hide();
-        iniciarRastreo(data.id); carrito = []; actualizarVista();
+// Función para cambiar cantidad (+ o -)
+function cambiarCantidad(index, delta) {
+    carrito[index].cantidad += delta;
+    if (carrito[index].cantidad <= 0) {
+        eliminarDelCarrito(index);
+    } else {
+        actualizarCarritoUI();
     }
 }
 
-function iniciarRastreo(id) {
-    document.getElementById('rastreador-container').classList.remove('d-none');
-    document.getElementById('track-id').innerText = id;
-    if (intervaloRastreo) clearInterval(intervaloRastreo);
-    intervaloRastreo = setInterval(async () => {
-        const r = await fetch(`/estado/${id}`); const d = await r.json();
-        const b = document.getElementById('progreso-barra'); const m = document.getElementById('track-mensaje');
-        if (d.status === 'preparando') { b.style.width = "50%"; m.innerText = d.detalle; }
-        else if (d.status === 'listo') { b.style.width = "100%"; b.classList.replace('bg-warning', 'bg-success'); m.innerText = d.detalle; clearInterval(intervaloRastreo); }
+// Función para borrar un item (X)
+function eliminarDelCarrito(index) {
+    carrito.splice(index, 1);
+    actualizarCarritoUI();
+}
+
+// UI Actualizada con botones interactivos
+function actualizarCarritoUI() {
+    const lista = document.getElementById('lista-pedido');
+    lista.innerHTML = '';
+    total = 0;
+
+    carrito.forEach((item, index) => {
+        total += item.precio * item.cantidad;
+        lista.innerHTML += `
+            <div class="mb-3 p-2 border-bottom">
+                <div class="d-flex justify-content-between align-items-center mb-1">
+                    <span class="fw-bold">${item.nombre}</span>
+                    <div class="d-flex align-items-center gap-1">
+                        <button class="btn-qty" onclick="cambiarCantidad(${index}, -1)">-</button>
+                        <span class="mx-1 fw-bold text-danger">x${item.cantidad}</span>
+                        <button class="btn-qty" onclick="cambiarCantidad(${index}, 1)">+</button>
+                        <button class="btn-del ms-2" onclick="eliminarDelCarrito(${index})">×</button>
+                    </div>
+                </div>
+                <div class="small text-muted">$${item.precio} c/u</div>
+            </div>`;
+    });
+    document.getElementById('total-cuenta').innerText = `$${total}`;
+}
+
+// --- RESTO DE FUNCIONES (Rastreador, Pago, Stock) ---
+
+function toggleDireccion(val) { document.getElementById('c-dir').classList.toggle('d-none', val === 'Sucursal'); }
+function toggleTarjeta(show) { document.getElementById('form-tarjeta').classList.toggle('d-none', !show); }
+
+function rastrearPedido(id) {
+    const intervalo = setInterval(() => {
+        fetch(`/estado/${id}`).then(res => res.json()).then(data => {
+            const barra = document.getElementById('progreso-barra');
+            const mensaje = document.getElementById('track-mensaje');
+            if (data.status === 'preparando') {
+                barra.style.width = '60%';
+                mensaje.innerText = data.detalle;
+            } else if (data.status === 'listo') {
+                barra.style.width = '100%';
+                barra.classList.replace('bg-warning', 'bg-success');
+                mensaje.innerText = data.detalle;
+                clearInterval(intervalo);
+            }
+        });
     }, 5000);
 }
 
-function showSection(s) { document.querySelectorAll('.menu-section').forEach(sec => sec.classList.add('d-none')); document.getElementById(s + '-section').classList.remove('d-none'); }
-window.onload = () => { actualizarVista(); verificarStock(); };
+setInterval(() => {
+    fetch('/api/stock').then(res => res.json()).then(inv => {
+        document.querySelectorAll('.btn-agregar').forEach(btn => {
+            const id = btn.getAttribute('data-product-id');
+            const card = btn.closest('.card');
+            if (inv[id] === false) { btn.classList.add('d-none'); if(card) card.classList.add('opacity-50'); }
+            else { btn.classList.remove('d-none'); if(card) card.classList.remove('opacity-50'); }
+        });
+    });
+}, 10000);
+
+async function validarYEnviar() {
+    const esTarjeta = document.getElementById('p-tarjeta').checked;
+    if (esTarjeta) {
+        Swal.fire({ title: 'Procesando...', allowOutsideClick: false, didOpen: () => { Swal.showLoading() } });
+        setTimeout(() => {
+            Swal.fire({ icon: 'success', title: '¡Transferencia Exitosa!', confirmButtonText: 'Continuar' }).then(enviarBackend);
+        }, 2000);
+    } else { enviarBackend(); }
+}
+
+function enviarBackend() {
+    const data = {
+        cliente: {
+            nombre: document.getElementById('c-nombre').value,
+            telefono: document.getElementById('c-tel').value,
+            tipo: document.getElementById('c-tipo').value,
+            direccion: document.getElementById('c-dir').value,
+            metodo_pago: document.querySelector('input[name="pago"]:checked').value
+        },
+        carrito: carrito
+    };
+    fetch('/ordenar', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(data) })
+    .then(res => res.json()).then(res => {
+        const modal = bootstrap.Modal.getInstance(document.getElementById('checkoutModal'));
+        modal.hide();
+        document.getElementById('rastreador-container').classList.remove('d-none');
+        document.getElementById('track-id').innerText = res.id;
+        document.getElementById('progreso-barra').style.width = '30%';
+        rastrearPedido(res.id);
+        carrito = []; total = 0; actualizarCarritoUI();
+    });
+}

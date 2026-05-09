@@ -3,10 +3,15 @@
 <head>
     <meta charset="UTF-8"><title>Rendón Burgers</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
     <style>
         body { background-color: #fcfcfc; }
         .sticky-cart { position: sticky; top: 20px; border-radius: 15px; }
-        .precio-texto.text-muted { text-decoration: line-through; opacity: 0.5; }
+        .d-none { display: none !important; }
+        /* Estilos para los botones del carrito */
+        .btn-qty { border: 1px solid #ced4da; background: white; padding: 2px 8px; border-radius: 5px; font-weight: bold; }
+        .btn-qty:hover { background: #f8f9fa; }
+        .btn-del { background: #d90429; color: white; border: none; padding: 2px 8px; border-radius: 5px; }
     </style>
 </head>
 <body>
@@ -23,12 +28,10 @@
             <p id="track-mensaje" class="text-center mt-3 fw-bold mb-0">Preparando...</p>
         </div>
 
-        <div class="text-center mb-5">
-            <div class="text-center mb-5 d-flex justify-content-center gap-2 flex-wrap">
+        <div class="text-center mb-5 d-flex justify-content-center gap-2 flex-wrap">
             <button class="btn btn-primary px-4 shadow-sm" onclick="showSection('desayunos')">🥞 Desayunos</button>
             <button class="btn btn-primary px-4 shadow-sm" onclick="showSection('hamburguesas')">🍔 Hamburguesas</button>
             <button class="btn btn-primary px-4 shadow-sm" onclick="showSection('bebidas')">🥤 Bebidas</button>
-</div>
         </div>
 
         <div class="row">
@@ -39,13 +42,18 @@
                     <div class="row">
                         {% for item in items %}
                         <div class="col-md-6 mb-4">
-                            <div class="card h-100 border-0 shadow-sm">
+                            <div class="card h-100 border-0 shadow-sm {% if not item.disponible %}opacity-50{% endif %}">
                                 <div class="card-body">
                                     <h5 class="fw-bold">{{ item.nombre }}</h5>
                                     <p class="text-muted small">{{ item.descripcion }}</p>
                                     <div class="d-flex justify-content-between align-items-center mt-3">
-                                        <span class="fs-4 fw-bold text-danger precio-texto" data-id="{{ item.id }}">${{ item.precio }}</span>
-                                        <button class="btn btn-dark btn-agregar" data-product-id="{{ item.id }}" onclick="agregarAlCarrito('{{ item.nombre }}', {{ item.precio }})">+ Agregar</button>
+                                        <span class="fs-4 fw-bold text-danger">${{ item.precio }}</span>
+                                        {% if item.disponible %}
+                                        <button class="btn btn-dark btn-agregar" data-product-id="{{ item.id }}" 
+                                                onclick="agregarAlCarrito('{{ item.nombre }}', {{ item.precio }}, {{ item.id }})">+ Agregar</button>
+                                        {% else %}
+                                        <span class="badge bg-secondary">Agotado</span>
+                                        {% endif %}
                                     </div>
                                 </div>
                             </div>
@@ -60,7 +68,8 @@
                 <div class="card shadow sticky-cart border-0">
                     <div class="card-header bg-white fw-bold">🛒 TU CARRITO</div>
                     <div class="card-body">
-                        <ul id="lista-pedido" class="list-group list-group-flush mb-3"></ul>
+                        <div id="lista-pedido" class="mb-3">
+                            </div>
                         <div class="d-flex justify-content-between fs-3 fw-bold border-top pt-3">
                             <span>Total:</span> <span id="total-cuenta" class="text-success">$0</span>
                         </div>
@@ -71,19 +80,35 @@
         </div>
     </div>
 
-    <div class="modal fade" id="checkoutModal" tabindex="-1" aria-hidden="true">
+    <div class="modal fade" id="checkoutModal" tabindex="-1">
         <div class="modal-dialog">
             <div class="modal-content">
                 <div class="modal-header"><h5>Finalizar Pedido 🍔</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
                 <div class="modal-body">
                     <input type="text" id="c-nombre" class="form-control mb-2" placeholder="Tu Nombre" required>
                     <input type="tel" id="c-tel" class="form-control mb-2" placeholder="Tu Teléfono" required>
-                    <select id="c-tipo" class="form-select mb-2" onchange="document.getElementById('c-dir').classList.toggle('d-none', this.value === 'Sucursal')">
+                    <select id="c-tipo" class="form-select mb-2" onchange="toggleDireccion(this.value)">
                         <option value="Sucursal">Recoger en Sucursal</option><option value="Domicilio">A Domicilio</option>
                     </select>
-                    <textarea id="c-dir" class="form-control d-none" placeholder="Dirección en Campeche"></textarea>
+                    <textarea id="c-dir" class="form-control d-none mb-3" placeholder="Dirección en Campeche"></textarea>
+                    
+                    <label class="fw-bold mb-2">Método de Pago:</label>
+                    <div class="d-flex gap-3 mb-3">
+                        <div class="form-check">
+                            <input class="form-check-input" type="radio" name="pago" id="p-efectivo" value="Efectivo" checked onchange="toggleTarjeta(false)">
+                            <label class="form-check-label" for="p-efectivo">💵 Efectivo</label>
+                        </div>
+                        <div class="form-check">
+                            <input class="form-check-input" type="radio" name="pago" id="p-tarjeta" value="Tarjeta" onchange="toggleTarjeta(true)">
+                            <label class="form-check-label" for="p-tarjeta">💳 Transferencia</label>
+                        </div>
+                    </div>
+                    <div id="form-tarjeta" class="d-none bg-light p-3 rounded border">
+                        <input type="text" class="form-control mb-2" placeholder="Número de cuenta (Simulado)">
+                        <input type="text" class="form-control" placeholder="Nombre del Titular">
+                    </div>
                 </div>
-                <div class="modal-footer"><button class="btn btn-success w-100" onclick="procesarCompraFinal()">ENVIAR A COCINA</button></div>
+                <div class="modal-footer"><button class="btn btn-success w-100" onclick="validarYEnviar()">ENVIAR A COCINA</button></div>
             </div>
         </div>
     </div>
