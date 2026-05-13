@@ -8,10 +8,30 @@
         body { background-color: #fcfcfc; }
         .sticky-cart { position: sticky; top: 20px; border-radius: 15px; }
         .d-none { display: none !important; }
-        /* Estilos para los botones del carrito */
         .btn-qty { border: 1px solid #ced4da; background: white; padding: 2px 8px; border-radius: 5px; font-weight: bold; }
-        .btn-qty:hover { background: #f8f9fa; }
         .btn-del { background: #d90429; color: white; border: none; padding: 2px 8px; border-radius: 5px; }
+
+        /* --- IMPLEMENTACIÓN DE DISEÑO DE IMÁGENES --- */
+
+        /* Estilo general para todas las imágenes del menú */
+        .card-img-top {
+            height: 250px; /* Altura fija para alineación */
+            width: 100%;
+            background-color: #fff; /* Fondo para imágenes pequeñas */
+            border-top-left-radius: 15px;
+            border-top-right-radius: 15px;
+        }
+
+        /* Las hamburguesas y desayunos llenan el cuadro (provocativas) */
+        .img-hamburguesas, .img-desayunos {
+            object-fit: cover; /* Llena el espacio sin estirarse */
+        }
+
+        /* Las bebidas se ven completas (sin recortes en tapa o base) */
+        .img-bebidas {
+            object-fit: contain; /* Ajusta la botella completa */
+            padding: 15px; /* Margen para que respire el envase */
+        }
     </style>
 </head>
 <body>
@@ -43,6 +63,14 @@
                         {% for item in items %}
                         <div class="col-md-6 mb-4">
                             <div class="card h-100 border-0 shadow-sm {% if not item.disponible %}opacity-50{% endif %}">
+                                {% if item.imagen and item.imagen.startswith('http') %}
+                                    <img src="{{ item.imagen }}" class="card-img-top img-{{ item.categoria }}" alt="{{ item.nombre }}">
+                                {% elif item.imagen %}
+                                    <img src="{{ url_for('static', filename='img/' + item.imagen) }}" class="card-img-top img-{{ item.categoria }}" alt="{{ item.nombre }}">
+                                {% else %}
+                                    <div class="bg-secondary card-img-top d-flex align-items-center justify-content-center text-white">Sin imagen</div>
+                                {% endif %}
+
                                 <div class="card-body">
                                     <h5 class="fw-bold">{{ item.nombre }}</h5>
                                     <p class="text-muted small">{{ item.descripcion }}</p>
@@ -68,8 +96,7 @@
                 <div class="card shadow sticky-cart border-0">
                     <div class="card-header bg-white fw-bold">🛒 TU CARRITO</div>
                     <div class="card-body">
-                        <div id="lista-pedido" class="mb-3">
-                            </div>
+                        <div id="lista-pedido" class="mb-3"></div>
                         <div class="d-flex justify-content-between fs-3 fw-bold border-top pt-3">
                             <span>Total:</span> <span id="total-cuenta" class="text-success">$0</span>
                         </div>
@@ -104,8 +131,7 @@
                         </div>
                     </div>
                     <div id="form-tarjeta" class="d-none bg-light p-3 rounded border">
-                        <input type="text" class="form-control mb-2" placeholder="Número de cuenta (Simulado)">
-                        <input type="text" class="form-control" placeholder="Nombre del Titular">
+                        <input type="text" class="form-control mb-2" placeholder="Datos de cuenta simulados">
                     </div>
                 </div>
                 <div class="modal-footer"><button class="btn btn-success w-100" onclick="validarYEnviar()">ENVIAR A COCINA</button></div>

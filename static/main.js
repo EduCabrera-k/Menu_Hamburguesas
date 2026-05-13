@@ -7,7 +7,7 @@ function showSection(id) {
     if (section) section.classList.remove('d-none');
 }
 
-// Función para agregar: Ahora busca si el item ya existe
+// Lógica de Carrito Interactiva
 function agregarAlCarrito(nombre, precio, id) {
     const index = carrito.findIndex(i => i.item_id === id);
     if (index > -1) {
@@ -16,11 +16,9 @@ function agregarAlCarrito(nombre, precio, id) {
         carrito.push({ nombre, precio, cantidad: 1, item_id: id });
     }
     actualizarCarritoUI();
-    const Toast = Swal.mixin({ toast: true, position: 'top-end', showConfirmButton: false, timer: 1000 });
-    Toast.fire({ icon: 'success', title: 'Agregado' });
+    Swal.fire({ toast: true, position: 'top-end', icon: 'success', title: 'Agregado', showConfirmButton: false, timer: 1000 });
 }
 
-// Función para cambiar cantidad (+ o -)
 function cambiarCantidad(index, delta) {
     carrito[index].cantidad += delta;
     if (carrito[index].cantidad <= 0) {
@@ -30,18 +28,15 @@ function cambiarCantidad(index, delta) {
     }
 }
 
-// Función para borrar un item (X)
 function eliminarDelCarrito(index) {
     carrito.splice(index, 1);
     actualizarCarritoUI();
 }
 
-// UI Actualizada con botones interactivos
 function actualizarCarritoUI() {
     const lista = document.getElementById('lista-pedido');
     lista.innerHTML = '';
     total = 0;
-
     carrito.forEach((item, index) => {
         total += item.precio * item.cantidad;
         lista.innerHTML += `
@@ -61,11 +56,7 @@ function actualizarCarritoUI() {
     document.getElementById('total-cuenta').innerText = `$${total}`;
 }
 
-// --- RESTO DE FUNCIONES (Rastreador, Pago, Stock) ---
-
-function toggleDireccion(val) { document.getElementById('c-dir').classList.toggle('d-none', val === 'Sucursal'); }
-function toggleTarjeta(show) { document.getElementById('form-tarjeta').classList.toggle('d-none', !show); }
-
+// Rastreo y Sincronización
 function rastrearPedido(id) {
     const intervalo = setInterval(() => {
         fetch(`/estado/${id}`).then(res => res.json()).then(data => {
@@ -89,11 +80,14 @@ setInterval(() => {
         document.querySelectorAll('.btn-agregar').forEach(btn => {
             const id = btn.getAttribute('data-product-id');
             const card = btn.closest('.card');
-            if (inv[id] === false) { btn.classList.add('d-none'); if(card) card.classList.add('opacity-50'); }
-            else { btn.classList.remove('d-none'); if(card) card.classList.remove('opacity-50'); }
+            if (inv[id] === false) { btn.classList.add('d-none'); card.classList.add('opacity-50'); }
+            else { btn.classList.remove('d-none'); card.classList.remove('opacity-50'); }
         });
     });
 }, 10000);
+
+function toggleDireccion(val) { document.getElementById('c-dir').classList.toggle('d-none', val === 'Sucursal'); }
+function toggleTarjeta(show) { document.getElementById('form-tarjeta').classList.toggle('d-none', !show); }
 
 async function validarYEnviar() {
     const esTarjeta = document.getElementById('p-tarjeta').checked;
