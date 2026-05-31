@@ -7,6 +7,37 @@ function showSection(id) {
     if (section) section.classList.remove('d-none');
 }
 
+// Lógica de Monitor de Red para la vista de cocina
+function verificarSaludNodoDatos() {
+    const badge = document.getElementById('db-status-badge');
+    const latencySpan = document.getElementById('db-latency');
+    
+    if (!badge || !latencySpan) return; 
+
+    fetch('/api/db-status')
+        .then(res => {
+            if (!res.ok) throw new Error("Error de respuesta");
+            return res.json();
+        })
+        .then(data => {
+            badge.className = `badge ${data.clase_css} px-3 py-2 fs-6 fw-normal`;
+            if (data.status === 'online') {
+                badge.innerHTML = `● CLÚSTER ONLINE`;
+                latencySpan.innerHTML = `Latencia: ${data.latencia}`;
+            } else {
+                badge.innerHTML = `● CLÚSTER OFFLINE`;
+                latencySpan.innerHTML = `Desconectado`;
+            }
+        })
+        .catch(() => {
+            if(badge && latencySpan) {
+                badge.className = "badge bg-danger px-3 py-2 fs-6 fw-normal";
+                badge.innerHTML = `● ERROR DE ENLACE`;
+                latencySpan.innerHTML = `Inalcanzable`;
+            }
+        });
+}
+
 // Lógica de Carrito Interactiva
 function agregarAlCarrito(nombre, precio, id) {
     const index = carrito.findIndex(i => i.item_id === id);
@@ -90,6 +121,16 @@ function toggleDireccion(val) { document.getElementById('c-dir').classList.toggl
 function toggleTarjeta(show) { document.getElementById('form-tarjeta').classList.toggle('d-none', !show); }
 
 async function validarYEnviar() {
+    if (carrito.length === 0) {
+        Swal.fire({
+            icon: 'warning',
+            title: 'Carrito vacío',
+            text: 'Agrega al menos un producto antes de continuar.',
+            confirmButtonColor: '#d90429'
+        });
+        return;
+    }
+
     const esTarjeta = document.getElementById('p-tarjeta').checked;
     if (esTarjeta) {
         Swal.fire({ title: 'Procesando...', allowOutsideClick: false, didOpen: () => { Swal.showLoading() } });
@@ -121,3 +162,12 @@ function enviarBackend() {
         carrito = []; total = 0; actualizarCarritoUI();
     });
 }
+
+// Disparador unificado para inicializar el monitor si detecta el badge de cocina
+document.addEventListener('DOMContentLoaded', () => {
+    if (document.getElementById('db-status-badge')) {
+        verificarSaludNodoDatos();
+        setInterval(verificarSaludNodoDatos, 2000);
+    }
+});
+

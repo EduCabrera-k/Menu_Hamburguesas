@@ -1,20 +1,26 @@
 from flask import Flask, render_template, request, jsonify
 from datetime import datetime
 from pymongo import MongoClient
+from dotenv import load_dotenv
+import time
+import os
+
+load_dotenv()
 
 app = Flask(__name__)
 
 # --- CONFIGURACIÓN DE MONGODB ATLAS ---
-MONGO_URI = "mongodb+srv://al070801_db_user:m5Rb0Msee6KB74X6@cluster0.yozw2vu.mongodb.net/?appName=Cluster0"
+MONGO_URI = os.getenv("MONGO_URI")
+if not MONGO_URI:
+    raise RuntimeError("MONGO_URI no está definida. Agrega la variable en tu archivo .env")
+
 client = MongoClient(MONGO_URI)
 db = client['rendon_burger_db']
 
-
-pedidos_col = db['pedidos_activos']
-historial_col = db['historial_ventas']
+pedidos_col    = db['pedidos_activos']
+historial_col  = db['historial_ventas']
 inventario_col = db['inventario_stock']
 
-# Menú completo con 26 items
 menu_items = [
     {"id": 1, "nombre": "Tradicional", "precio": 75, "descripcion": "Carne de la casa, jamón, queso, tocino y vegetales.", "categoria": "hamburguesas" , "imagen": "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcQZQUZieQ9R-6Q1E-2hw1dNgQn8D-o76ferYQ&s"},
     {"id": 2, "nombre": "Tradicional Doble", "precio": 120, "descripcion": "Doble carne, doble jamón, queso y tocino.", "categoria": "hamburguesas" ,"imagen": "Tradicional Doble.jpg"},
@@ -44,6 +50,71 @@ menu_items = [
     {"id": 26, "nombre": "Tostadas de Pollo", "precio": 20, "descripcion": "Tostada individual de pollo.", "categoria": "desayunos" , "imagen": "https://i.pinimg.com/1200x/ac/dc/8c/acdc8c176144847a0362eb0ab605e413.jpg"}
 ]
 
+
+# IDs válidos del menú para validar el carrito
+MENU_IDS_VALIDOS = {item['id'] for item in menu_items}
+
+
+def _validar_pedido(data):
+    """
+    Valida la estructura del payload recibido en /ordenar.
+    Retorna (True, None) si es válido o (False, mensaje_error) si no lo es.
+    """
+    if not isinstance(data, dict):
+        return False, "Payload inválido."
+
+    cliente = data.get('cliente')
+    carrito = data.get('carrito')
+
+    # --- Validar cliente ---
+    if not isinstance(cliente, dict):
+        return False, "Datos de cliente inválidos."
+
+    nombre = (cliente.get('nombre') or '').strip()
+    telefono = (cliente.get('telefono') or '').strip()
+    tipo = cliente.get('tipo')
+    metodo_pago = cliente.get('metodo_pago')
+
+    if not nombre:
+        return False, "El nombre del cliente es obligatorio."
+    if len(nombre) > 100:
+        return False, "El nombre del cliente es demasiado largo."
+    if not telefono:
+        return False, "El teléfono del cliente es obligatorio."
+    if not telefono.replace('+', '').replace(' ', '').isdigit() or not (7 <= len(telefono) <= 15):
+        return False, "El teléfono no tiene un formato válido."
+    if tipo not in ('Sucursal', 'Domicilio'):
+        return False, "Tipo de entrega inválido."
+    if metodo_pago not in ('Efectivo', 'Tarjeta'):
+        return False, "Método de pago inválido."
+    if tipo == 'Domicilio' and not (cliente.get('direccion') or '').strip():
+        return False, "La dirección es obligatoria para pedidos a domicilio."
+
+    # --- Validar carrito ---
+    if not isinstance(carrito, list) or len(carrito) == 0:
+        return False, "El carrito está vacío."
+    if len(carrito) > 50:
+        return False, "El carrito excede el límite de artículos permitidos."
+
+    for i, item in enumerate(carrito):
+        if not isinstance(item, dict):
+            return False, f"Item #{i+1} tiene formato inválido."
+
+        item_id  = item.get('item_id')
+        cantidad = item.get('cantidad')
+        precio   = item.get('precio')
+        nombre_item = item.get('nombre', '')
+
+        if not isinstance(item_id, int) or item_id not in MENU_IDS_VALIDOS:
+            return False, f"El producto con ID '{item_id}' no existe en el menú."
+        if not isinstance(cantidad, int) or cantidad < 1 or cantidad > 99:
+            return False, f"Cantidad inválida para '{nombre_item}'."
+        if not isinstance(precio, (int, float)) or precio <= 0:
+            return False, f"Precio inválido para '{nombre_item}'."
+
+    return True, None
+
+
 @app.route('/')
 def index():
     inventario = {item['item_id']: item['disponible'] for item in inventario_col.find()}
@@ -51,9 +122,11 @@ def index():
     for item in menu_items:
         item['disponible'] = inventario.get(str(item['id']), True)
         cat = item['categoria']
-        if cat not in menu_por_categoria: menu_por_categoria[cat] = []
+        if cat not in menu_por_categoria:
+            menu_por_categoria[cat] = []
         menu_por_categoria[cat].append(item)
     return render_template('index.html', menu_por_categoria=menu_por_categoria)
+
 
 @app.route('/cocina')
 def vista_cocina():
@@ -61,34 +134,76 @@ def vista_cocina():
     for item in menu_items:
         item['disponible'] = inventario.get(str(item['id']), True)
     pedidos = list(pedidos_col.find().sort("hora", 1))
-    for p in pedidos: p.pop('_id', None)
+    for p in pedidos:
+        p.pop('_id', None)
     return render_template('cocina.html', pedidos=pedidos, menu=menu_items)
+
 
 @app.route('/api/stock')
 def api_stock():
     inventario = {item['item_id']: item['disponible'] for item in inventario_col.find()}
     return jsonify(inventario)
 
+
+@app.route('/api/db-status')
+def db_status():
+    """
+    Endpoint distribuido para comprobar la latencia y disponibilidad
+    del clúster en la nube (Heartbeat Monitor).
+    """
+    try:
+        inicio = time.time()
+        client.admin.command('ping')
+        fin = time.time()
+        latencia_ms = round((fin - inicio) * 1000)
+        return jsonify({
+            "status": "online",
+            "latencia": f"{latencia_ms} ms",
+            "clase_css": "bg-success" if latencia_ms < 150 else "bg-warning"
+        }), 200
+    except Exception as e:
+        return jsonify({
+            "status": "offline",
+            "latencia": "Inalcanzable",
+            "clase_css": "bg-danger",
+            "error": str(e)
+        }), 500
+
+
 @app.route('/ordenar', methods=['POST'])
 def ordenar():
-    data = request.json
+    data = request.get_json(silent=True)
+
+    # --- Validación ---
+    es_valido, error_msg = _validar_pedido(data)
+    if not es_valido:
+        return jsonify({"status": "error", "mensaje": error_msg}), 400
+
+    cliente = data['cliente']
+    carrito = data['carrito']
+
     fecha_hoy = datetime.now().strftime("%Y-%m-%d")
-    total_hoy = pedidos_col.count_documents({"fecha": fecha_hoy}) + historial_col.count_documents({"fecha": fecha_hoy})
+    total_hoy = (
+        pedidos_col.count_documents({"fecha": fecha_hoy}) +
+        historial_col.count_documents({"fecha": fecha_hoy})
+    )
     nuevo_id = total_hoy + 1
+
     nuevo_pedido = {
-        "id": nuevo_id,
-        "cliente": data['cliente']['nombre'],
-        "telefono": data['cliente']['telefono'],
-        "entrega": data['cliente']['tipo'],
-        "direccion": data['cliente'].get('direccion', 'N/A'),
-        "metodo_pago": data['cliente'].get('metodo_pago', 'Efectivo'),
-        "items": data['carrito'],
-        "hora": datetime.now().strftime("%H:%M:%S"),
-        "fecha": fecha_hoy,
-        "total": sum(i['precio'] * i['cantidad'] for i in data['carrito'])
+        "id":          nuevo_id,
+        "cliente":     cliente['nombre'].strip(),
+        "telefono":    cliente['telefono'].strip(),
+        "entrega":     cliente['tipo'],
+        "direccion":   cliente.get('direccion', 'N/A').strip(),
+        "metodo_pago": cliente.get('metodo_pago', 'Efectivo'),
+        "items":       carrito,
+        "hora":        datetime.now().strftime("%H:%M:%S"),
+        "fecha":       fecha_hoy,
+        "total":       sum(i['precio'] * i['cantidad'] for i in carrito),
     }
     pedidos_col.insert_one(nuevo_pedido)
     return jsonify({"status": "success", "id": nuevo_id})
+
 
 @app.route('/estado/<int:pedido_id>')
 def consultar_estado(pedido_id):
@@ -97,24 +212,37 @@ def consultar_estado(pedido_id):
         return jsonify({"status": "preparando", "detalle": "Preparando..."})
     pedido_f = historial_col.find_one({"id": pedido_id})
     if pedido_f:
-        msg = "¡Tu orden está en camino! 🛵" if pedido_f.get('entrega') == 'Domicilio' else "¡Tu orden está lista para recoger! 🍔"
+        msg = (
+            "¡Tu orden está en camino! 🛵"
+            if pedido_f.get('entrega') == 'Domicilio'
+            else "¡Tu orden está lista para recoger! 🍔"
+        )
         return jsonify({"status": "listo", "detalle": msg})
     return jsonify({"status": "no_encontrado", "detalle": "Buscando..."})
+
 
 @app.route('/reporte')
 def ver_reporte():
     fecha_hoy = datetime.now().strftime("%Y-%m-%d")
     ventas = list(historial_col.find({"fecha": fecha_hoy}))
+    for v in ventas:
+        v.pop('_id', None)
     total_dinero = sum(v['total'] for v in ventas)
     return render_template('reporte.html', ventas=ventas, total=total_dinero)
+
 
 @app.route('/toggle_disponibilidad', methods=['POST'])
 def toggle_disponibilidad():
     item_id = str(request.json.get('id'))
     doc = inventario_col.find_one({"item_id": item_id})
     nuevo_estado = not doc['disponible'] if doc else False
-    inventario_col.update_one({"item_id": item_id}, {"$set": {"disponible": nuevo_estado}}, upsert=True)
+    inventario_col.update_one(
+        {"item_id": item_id},
+        {"$set": {"disponible": nuevo_estado}},
+        upsert=True
+    )
     return jsonify({"status": "success"})
+
 
 @app.route('/marcar_listo', methods=['POST'])
 def marcar_listo():
@@ -127,5 +255,9 @@ def marcar_listo():
         return jsonify({"status": "success"})
     return jsonify({"status": "error"}), 404
 
+
 if __name__ == '__main__':
     app.run(debug=True, port=5000)
+
+
+   
